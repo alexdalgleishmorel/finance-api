@@ -1,10 +1,11 @@
 import pandas as pd
 import sys
 from elasticsearch import Elasticsearch
+import hashlib
 
 USER='elastic'
-PASS='iLd5dGiWFRJ*oWKhjD+Q'
-CERTIFICATE='d950c49376fcbaed594d61bb5946706381f2caf560254df9542bd1ce2a9292ac'
+PASS='P*P1E-QpIl2J10yWdjbL'
+CERTIFICATE='26e3d93b3bebc2ece036c2547f5cf3e88931a22712bc89121c70be167aaaa561'
 
 COLUMN_NAMES = ['Date', 'Description', 'Value']
 COLUMN_NAMES_TRAINING = ['Date', 'Description', 'Value', 'Category']
@@ -23,19 +24,57 @@ def process_csv(filepath, training=False):
 
     print(debitsDataframe[["Description","Category"]].to_string())
 
-    fuzzy_query()
+    #add_training_data(debitsDataframe[["Description","Category"]])
+
+    search_all()
+
+    #fuzzy_query()
+
+    #print(debitsDataframe['Description'][355])
+
+    #es.options(ignore_status=[400,404]).indices.delete(index='test-index')
 
     return debitsDataframe, creditsDataframe
 
-
-def fuzzy_query():
-    # Uploading the 359th index to the server
+def categorize_dataframe(dataframe):
     es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
 
-    resp = es.search(index="test-index", query={
+
+def add_training_data(dataframe):
+    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
+
+    for index in dataframe.index:
+        create_new_document('categorized_data', dataframe['Description'][index], dataframe['Category'][index])
+
+
+def description_to_unique_id(description: str):
+    return int(hashlib.sha1(description.encode('utf-8')).hexdigest(), 16)
+
+def search_all():
+    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
+
+    resp = es.search(index="categorized_data", query={"match_all": {}})
+    print("Got %d Hits:" % resp['hits']['total']['value'])
+    for hit in resp['hits']['hits']:
+        print("%(Description)s %(Category)s" % hit["_source"])
+
+def create_new_document(index, description, category):
+    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
+    doc = {
+        'Description': description,
+        'Category': category
+    }
+    resp = es.index(index=index, id=description_to_unique_id(description), document=doc)
+    print(resp['result'])
+
+def fuzzy_query():
+    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
+
+    resp = es.search(index="categorized_data", query={
         "fuzzy": {
             "Description": {
-                "value": "Bitchen"
+                "fuzziness": "AUTO",
+                "value": "shawarma"
             }
         }
     })
