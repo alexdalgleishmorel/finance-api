@@ -39,6 +39,21 @@ def process_csv(filepath, training=False):
 def categorize_dataframe(dataframe):
     es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
 
+    # Iterate through the dataframe
+    for index in dataframe.index:
+        pass
+        # Check if this description already exists
+
+        # If the description already exists, we can assign the corresponding category and continue
+
+        # If the description does not exist, we will fuzzy query to get a category
+
+        # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
+
+        # IF BAD FUZZY: Write out a bad fuzzy report, assign UNKNOWN to this dataframe row
+
+    return dataframe
+
 
 def add_training_data(dataframe):
     es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
