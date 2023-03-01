@@ -1,20 +1,17 @@
 import pandas as pd
 import sys
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, NotFoundError
 import hashlib
 
 USER='elastic'
-PASS='P*P1E-QpIl2J10yWdjbL'
-CERTIFICATE='26e3d93b3bebc2ece036c2547f5cf3e88931a22712bc89121c70be167aaaa561'
+PASS='iLd5dGiWFRJ*oWKhjD+Q'
+CERTIFICATE='d950c49376fcbaed594d61bb5946706381f2caf560254df9542bd1ce2a9292ac'
 
-COLUMN_NAMES = ['Date', 'Description', 'Value']
-COLUMN_NAMES_TRAINING = ['Date', 'Description', 'Value', 'Category']
+COLUMN_NAMES = ['Date', 'Description', 'Value', 'Category']
 
 def process_csv(filepath, training=False):
-    if training:
-        debitsDataframe = pd.read_csv(filepath, names=COLUMN_NAMES_TRAINING)
-    else:
-        debitsDataframe = pd.read_csv(filepath, names=COLUMN_NAMES)
+    
+    debitsDataframe = pd.read_csv(filepath, names=COLUMN_NAMES)
     
     creditsDataframe = debitsDataframe[debitsDataframe['Value'] > 0] 
 
@@ -26,7 +23,13 @@ def process_csv(filepath, training=False):
 
     #add_training_data(debitsDataframe[["Description","Category"]])
 
-    search_all()
+    dataframe = categorize_dataframe(debitsDataframe)
+
+    print(dataframe.to_string())
+
+    categorization_report(dataframe)
+
+    #search_all()
 
     #fuzzy_query()
 
@@ -36,21 +39,54 @@ def process_csv(filepath, training=False):
 
     return debitsDataframe, creditsDataframe
 
+def categorization_report(dataframe):
+    total = 0
+    success = 0
+    unknown = 0
+
+    for index in dataframe.index:
+        if dataframe['Category'][index] != "UNKNOWN":
+            success += 1
+        else:
+            unknown += 1
+        total += 1
+    
+    print(f"Total successful matches: {success}/{total} --> {str(round((success/total)*100, 2))}%")
+    print(f"Total unknowns: {unknown}/{total} --> {str(round((unknown/total)*100, 2))}%")
+
 def categorize_dataframe(dataframe):
     es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
 
     # Iterate through the dataframe
     for index in dataframe.index:
-        pass
         # Check if this description already exists
+        description_exists = True
+        try:
+            resp = es.get(index='categorized_data', id=description_to_unique_id(dataframe['Description'][index]))       
+        except NotFoundError:
+            description_exists = False
 
-        # If the description already exists, we can assign the corresponding category and continue
-
-        # If the description does not exist, we will fuzzy query to get a category
-
-        # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
-
-        # IF BAD FUZZY: Write out a bad fuzzy report, assign UNKNOWN to this dataframe row
+        if description_exists:
+            # If the description already exists, we can assign the corresponding category and continue
+            dataframe['Category'][index] = "%(Category)s" % resp['_source']
+        else:
+            # If the description does not exist, we will fuzzy query to get a category
+            resp = es.search(index="categorized_data", query={
+                "fuzzy": {
+                    "Description": {
+                        "fuzziness": "AUTO",
+                        "value": dataframe['Description'][index]
+                    }
+                }
+            })
+            if resp['hits']['total']['value'] > 0:
+                # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
+                dataframe['Category'][index] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
+                print(f"Mapped {dataframe['Description'][index]} to {dataframe['Category'][index]}")
+            else:
+                # IF BAD FUZZY: Write out a bad fuzzy report, assign UNKNOWN to this dataframe row
+                dataframe['Category'][index] = "UNKNOWN"
+                print(f"Fuzzy for {dataframe['Description'][index]} turned up nothing :(")
 
     return dataframe
 
@@ -83,8 +119,6 @@ def create_new_document(index, description, category):
     print(resp['result'])
 
 def fuzzy_query():
-    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
-
     resp = es.search(index="categorized_data", query={
         "fuzzy": {
             "Description": {
