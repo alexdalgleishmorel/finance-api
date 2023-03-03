@@ -1,13 +1,16 @@
-import pandas as pd
 import sys
+
+sys.path.append('../../')
+import config
+
+import pandas as pd
 from elasticsearch import Elasticsearch, NotFoundError
 import hashlib
 
-USER='elastic'
-PASS='iLd5dGiWFRJ*oWKhjD+Q'
-CERTIFICATE='d950c49376fcbaed594d61bb5946706381f2caf560254df9542bd1ce2a9292ac'
-
 COLUMN_NAMES = ['Date', 'Description', 'Value', 'Category']
+USER = config.USER
+PASS = config.PASS
+CERTIFICATE = config.CERTIFICATE
 
 def process_csv(filepath, training=False):
     
