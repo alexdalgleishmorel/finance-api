@@ -1,5 +1,5 @@
 start-elastic:
-	sudo docker start id=${id}
+	sudo docker start ${id}
 
 process-data:
 	cd src/process; python3 process_csv.py normal_data

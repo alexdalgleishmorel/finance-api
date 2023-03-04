@@ -6,6 +6,8 @@ import config
 import pandas as pd
 from elasticsearch import Elasticsearch, NotFoundError
 import hashlib
+import urllib3
+urllib3.disable_warnings()
 
 COLUMN_NAMES = ['Date', 'Description', 'Value', 'Category']
 USER = config.USER
@@ -13,6 +15,7 @@ PASS = config.PASS
 CERTIFICATE = config.CERTIFICATE
 
 fuzzy_successes = 0
+es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False, ssl_show_warn=False)
 
 def process_csv(filepath, training=False):
     
@@ -61,7 +64,6 @@ def categorization_report(dataframe):
     print("Fuzzy Successes: %s" % fuzzy_successes)
 
 def categorize_dataframe(dataframe):
-    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
 
     # Iterate through the dataframe
     for index in dataframe.index:
@@ -92,14 +94,10 @@ def categorize_dataframe(dataframe):
 
 
 def add_training_data(dataframe):
-    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
-
     for index in dataframe.index:
         create_new_document('categorized_data', dataframe['Description'][index], dataframe['Category'][index])
 
 def search_for_exact_description(description):
-    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
-
     try:
         resp = es.get(index='categorized_data', id=description_to_unique_id(description))
         print(resp)  
@@ -110,15 +108,12 @@ def description_to_unique_id(description: str):
     return int(hashlib.sha1(description.encode('utf-8')).hexdigest(), 16)
 
 def search_all():
-    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
-
     resp = es.search(index="categorized_data", query={"match_all": {}})
     print("Got %d Hits:" % resp['hits']['total']['value'])
     for hit in resp['hits']['hits']:
         print("%(Description)s %(Category)s" % hit["_source"])
 
 def create_new_document(index, description, category):
-    es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
     doc = {
         'Description': description,
         'Category': category
@@ -151,5 +146,4 @@ elif len(sys.argv) == 3:
     if sys.argv[1] == 'exact_match':
         search_for_exact_description(sys.argv[2])
     elif sys.argv[1] == 'fuzzy_match':
-        es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False)
         fuzzy_query(es, sys.argv[2])
