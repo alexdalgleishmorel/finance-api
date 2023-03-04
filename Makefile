@@ -1,11 +1,14 @@
 start-elastic:
-	sudo docker start ffb39ba3d4a792656489a83ef8f89b33a7d7f225cbfb282efe7f55b64d397e31
-
-stop-elastic:
-	sudo docker stop ffb39ba3d4a792656489a83ef8f89b33a7d7f225cbfb282efe7f55b64d397e31
+	sudo docker start id=${id}
 
 process-data:
-	cd src/process; python3 process_csv.py
+	cd src/process; python3 process_csv.py normal_data
 
 proccess-data-training:
-	cd src/process; python3 process_csv.py training
+	cd src/process; python3 process_csv.py training_data
+
+get-exact-match:
+	cd src/process; python3 process_csv.py exact_match $(exact_match)
+
+get-fuzzy-match:
+	cd src/process; python3 process_csv.py fuzzy_match $(fuzzy_match)
