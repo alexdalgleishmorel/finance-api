@@ -75,14 +75,14 @@ def categorize_dataframe(dataframe):
 
         if description_exists:
             # If the description already exists, we can assign the corresponding category and continue
-            dataframe['Category'][index] = "%(Category)s" % resp['_source']
+            dataframe.at[index, 'Description'] = "%(Category)s" % resp['_source']
             #print("%s already exists, using %s" % (dataframe['Description'][index], resp['_source']['Category']))
         else:
             # If the description does not exist, we will fuzzy query to get a category
             resp = fuzzy_query(dataframe['Description'][index])
             if resp['hits']['total']['value'] > 0:
                 # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
-                dataframe['Category'][index] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
+                dataframe.at[index, 'Category'] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
                 global fuzzy_successes
                 fuzzy_successes += 1
                 print("Matched %s to %s" % (dataframe['Description'][index], resp['hits']['hits'][0]["_source"]['Description']))
@@ -90,12 +90,12 @@ def categorize_dataframe(dataframe):
                 resp = fuzzy_query(dataframe['Description'][index].replace(" ", ""))
                 if resp['hits']['total']['value'] > 0:
                     # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
-                    dataframe['Category'][index] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
+                    dataframe.at[index, 'Category'] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
                     fuzzy_successes += 1
                     print("Matched %s to %s" % (dataframe['Description'][index], resp['hits']['hits'][0]["_source"]['Description']))
                 else:
                     # IF BAD FUZZY: Write out a bad fuzzy report, assign UNKNOWN to this dataframe row
-                    dataframe['Category'][index] = "UNKNOWN"
+                    dataframe.at[index, 'Category'] = "UNKNOWN"
                     global unknown_rankings
                     try:
                         unknown_rankings[dataframe['Description'][index]] += 1
