@@ -1,17 +1,23 @@
+"""sys library used to process command line inputs"""
 import sys
-
 sys.path.append('../')
-import config
+
+"""Categorization library used to help classify financial records"""
 import categorization
-
-import pandas as pd
+"""Contains required configuration variables"""
+import config
+"""Elasticsearch library for storing and querying financial records"""
 from elasticsearch import Elasticsearch, NotFoundError
+"""Hashing library used to store unique description values as ID numbers"""
 import hashlib
-import urllib3
-urllib3.disable_warnings()
-
-import csv
+"""JSON library used to load JSON files"""
 import json
+"""Pandas library used to process and evaluate the JSON payloads"""
+import pandas as pd
+"""urllib3 dependency used by elasticsearch to communicate"""
+import urllib3
+
+urllib3.disable_warnings()
 
 USER = config.USER
 PASS = config.PASS
@@ -19,10 +25,15 @@ CERTIFICATE = config.CERTIFICATE
 
 unknown_rankings = {}
 fuzzy_successes = 0
-es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_certs=CERTIFICATE, verify_certs=False, ssl_show_warn=False)
+es = Elasticsearch(
+    hosts="https://localhost:9200",
+    basic_auth=(USER, PASS),
+    ca_certs=CERTIFICATE,
+    verify_certs=False,
+    ssl_show_warn=False
+)
 
 def json_to_dataframe(json_data):
-    
     json_list = []
 
     for key in json_data:
@@ -35,7 +46,7 @@ def json_to_dataframe(json_data):
 def search_for_exact_description(description):
     try:
         resp = es.get(index='categorized_data', id=description_to_unique_id(description))
-        print(resp)  
+        print(resp)
     except NotFoundError:
         description_exists = False
 
@@ -58,16 +69,20 @@ def create_new_document(index, description, category):
     resp = es.index(index=index, id=description_to_unique_id(description), document=doc)
     print(resp['result'])
 
-def fuzzy_query(description):
-    resp = es.search(index="categorized_data", query={
-        "match_phrase_prefix": {
-            "Description": {
-                "query": description
+def classify_description(description):
+    resp = es.search(
+        index="categorized_data", query = {
+            "match_phrase_prefix": {
+                "Description": {
+                    "query": description
+                }
             }
         }
-    }
     )
-    return resp
+    if resp['hits']['total']['value'] > 0:
+        return resp['hits']['hits'][0]["_source"]["Category"]
+    else:
+        return None
 
 def delete_index(index_name):
     es.options(ignore_status=[400,404]).indices.delete(index=index_name)
@@ -80,45 +95,32 @@ def categorize_dataframe(dataframe):
         # Check if this description already exists
         description_exists = True
         try:
-            resp = es.get(index='categorized_data', id=description_to_unique_id(dataframe['Description'][index]))       
+            resp = es.get(
+                index='categorized_data',
+                id=description_to_unique_id(dataframe['Description'][index]))
         except NotFoundError:
             description_exists = False
 
         if description_exists:
-            # If the description already exists, we can assign the corresponding category and continue
+            # If the description already exists, assign the corresponding category and continue
             dataframe.at[index, 'Description'] = "%(Category)s" % resp['_source']
-            #print("%s already exists, using %s" % (dataframe['Description'][index], resp['_source']['Category']))
         else:
             # If the description does not exist, we will fuzzy query to get a category
-            resp = fuzzy_query(dataframe['Description'][index])
-            if resp['hits']['total']['value'] > 0:
-                # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
-                dataframe.at[index, 'Category'] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
+            category = classify_description(dataframe['Description'][index])
+            if category:
+                dataframe.at[index, 'Category'] = category
                 fuzzy_successes += 1
-                print("Matched %s to %s" % (dataframe['Description'][index], resp['hits']['hits'][0]["_source"]['Description']))
             else:
-                resp = fuzzy_query(dataframe['Description'][index].replace(" ", ""))
-                if resp['hits']['total']['value'] > 0:
-                    # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
-                    dataframe.at[index, 'Category'] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
-                    fuzzy_successes += 1
-                    print("Matched %s to %s" % (dataframe['Description'][index], resp['hits']['hits'][0]["_source"]['Description']))
-                else:
-                    # IF BAD FUZZY: Write out a bad fuzzy report, assign UNKNOWN to this dataframe row
-                    dataframe.at[index, 'Category'] = "UNKNOWN"
-                    try:
-                        unknown_rankings[dataframe['Description'][index]] += 1
-                    except KeyError:
-                        unknown_rankings[dataframe['Description'][index]] = 1
-                    #print(f"Fuzzy for {dataframe['Description'][index]} turned up nothing")
+                dataframe.at[index, 'Category'] = "UNKNOWN"
+                try:
+                    unknown_rankings[dataframe['Description'][index]] += 1
+                except KeyError:
+                    unknown_rankings[dataframe['Description'][index]] = 1
 
     return dataframe
 
 # Opening JSON file
 f = open('../../tests/data/json_credit_history.json')
-  
-# returns JSON object as 
-# a dictionary
 json_data = json.load(f)
 
 if len(sys.argv) == 2:
