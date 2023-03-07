@@ -2,10 +2,7 @@ start-elastic:
 	sudo docker start ${id}
 
 process-data:
-	cd src/library; python3 processing.py normal_data
-
-process-data-training:
-	cd src/library; python3 processing.py training_data
+	cd src/library; python3 processing.py process_data
 
 get-exact-match:
 	cd src/library; python3 processing.py exact_match $(exact_match)

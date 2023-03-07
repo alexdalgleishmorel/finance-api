@@ -2,6 +2,7 @@ import sys
 
 sys.path.append('../')
 import config
+import categorization
 
 import pandas as pd
 from elasticsearch import Elasticsearch, NotFoundError
@@ -12,7 +13,6 @@ urllib3.disable_warnings()
 import csv
 import json
 
-COLUMN_NAMES = ['Date', 'Description', 'Value', 'Category']
 USER = config.USER
 PASS = config.PASS
 CERTIFICATE = config.CERTIFICATE
@@ -23,52 +23,14 @@ es = Elasticsearch(hosts="https://localhost:9200", basic_auth=(USER, PASS), ca_c
 
 def json_to_dataframe(json_data):
     
-    debitsDataframe = pd.json_normalize(json_data)
-    print(debitsDataframe)
-    
-    creditsDataframe = debitsDataframe[debitsDataframe['Value'] > 0] 
+    json_list = []
 
-    for index in debitsDataframe.index:
-        if debitsDataframe['Value'][index] > 0:
-            debitsDataframe.drop(index, inplace=True)
+    for key in json_data:
+        json_list.append(json_data[key])
 
-    es.index(index='categorized_data', id=1, document={"init": "init"})
+    dataframe = categorize_dataframe(pd.DataFrame(json_list))
 
-    dataframe = categorize_dataframe(debitsDataframe)
-
-    #print(dataframe.to_string())
-
-    categorization_report(dataframe)
-
-    return debitsDataframe, creditsDataframe
-
-def categorization_report(dataframe):
-    total = 0
-    success = 0
-    unknown = 0
-
-    for index in dataframe.index:
-        if dataframe['Category'][index] != "UNKNOWN":
-            success += 1
-        else:
-            unknown += 1
-        total += 1
-    
-    print(f"Total successful matches: {success}/{total} --> {str(round((success/total)*100, 2))}%")
-    print(f"Total unknowns: {unknown}/{total} --> {str(round((unknown/total)*100, 2))}%")
-    global fuzzy_successes
-    global unknown_rankings
-    print("Fuzzy Successes: %s" % fuzzy_successes)
-    rank_array = []
-    for key in unknown_rankings:
-        rank_array.append((key, unknown_rankings[key]))
-    rank_array.sort(key = lambda x: x[1])
-    rank_array.reverse()
-    print(rank_array[0:5])
-
-def add_training_data(dataframe):
-    for index in dataframe.index:
-        create_new_document('categorized_data', dataframe['Description'][index], dataframe['Category'][index])
+    return dataframe
 
 def search_for_exact_description(description):
     try:
@@ -109,44 +71,60 @@ def fuzzy_query(description):
 
 def delete_index(index_name):
     es.options(ignore_status=[400,404]).indices.delete(index=index_name)
-    
 
-# create a dictionary
-data = {}
-csvFilePath="../../tests/data/creditCardHistory.csv"
-jsonFilePath="../../tests/data/json_credit_history.json"
-    
-# Open a csv reader called DictReader
-with open(csvFilePath, encoding='utf-8') as csvf:
-    csvReader = csv.DictReader(csvf)
-        
-    # Convert each row into a dictionary
-    # and add it to data
-    count = 0
-    for rows in csvReader:
-        row_count = 0
-        for key in rows:
-            if row_count == 0:
-                rows['Date'] = rows.pop(key)
-            elif row_count == 1:
-                rows['Description'] = rows.pop(key)
-            elif row_count == 2:
-                rows['Value'] = rows.pop(key)
-            row_count += 1
-        data[str(count)] = rows
-        count += 1
+def categorize_dataframe(dataframe):
+    global fuzzy_successes, unknown_rankings
 
-# Open a json writer, and use the json.dumps()
-# function to dump data
-with open(jsonFilePath, 'w', encoding='utf-8') as jsonf:
-    jsonf.write(json.dumps(data, indent=4))
+    # Iterate through the dataframe
+    for index in dataframe.index:
+        # Check if this description already exists
+        description_exists = True
+        try:
+            resp = es.get(index='categorized_data', id=description_to_unique_id(dataframe['Description'][index]))       
+        except NotFoundError:
+            description_exists = False
 
-"""
+        if description_exists:
+            # If the description already exists, we can assign the corresponding category and continue
+            dataframe.at[index, 'Description'] = "%(Category)s" % resp['_source']
+            #print("%s already exists, using %s" % (dataframe['Description'][index], resp['_source']['Category']))
+        else:
+            # If the description does not exist, we will fuzzy query to get a category
+            resp = fuzzy_query(dataframe['Description'][index])
+            if resp['hits']['total']['value'] > 0:
+                # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
+                dataframe.at[index, 'Category'] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
+                fuzzy_successes += 1
+                print("Matched %s to %s" % (dataframe['Description'][index], resp['hits']['hits'][0]["_source"]['Description']))
+            else:
+                resp = fuzzy_query(dataframe['Description'][index].replace(" ", ""))
+                if resp['hits']['total']['value'] > 0:
+                    # IF GOOD FUZZY: Assign the corresponding category to dataframe row, then add the new description/category pair to the dataset
+                    dataframe.at[index, 'Category'] = "%(Category)s" % resp['hits']['hits'][0]["_source"]
+                    fuzzy_successes += 1
+                    print("Matched %s to %s" % (dataframe['Description'][index], resp['hits']['hits'][0]["_source"]['Description']))
+                else:
+                    # IF BAD FUZZY: Write out a bad fuzzy report, assign UNKNOWN to this dataframe row
+                    dataframe.at[index, 'Category'] = "UNKNOWN"
+                    try:
+                        unknown_rankings[dataframe['Description'][index]] += 1
+                    except KeyError:
+                        unknown_rankings[dataframe['Description'][index]] = 1
+                    #print(f"Fuzzy for {dataframe['Description'][index]} turned up nothing")
+
+    return dataframe
+
+# Opening JSON file
+f = open('../../tests/data/json_credit_history.json')
+  
+# returns JSON object as 
+# a dictionary
+json_data = json.load(f)
+
 if len(sys.argv) == 2:
-    if sys.argv[1] == 'training_data':
-        json_to_dataframe(json_data)
-    elif sys.argv[1] == 'normal_data':
-        process_csv('../../tests/data/creditCardHistory.csv')
+    if sys.argv[1] == 'process_data':
+        dataframe = json_to_dataframe(json_data)
+        categorization.categorization_report(dataframe, fuzzy_successes, unknown_rankings)
     elif sys.argv[1] == 'delete_index':
         delete_index('categorized_data')
 elif len(sys.argv) == 3:
@@ -157,4 +135,3 @@ elif len(sys.argv) == 3:
         print("Got %d Hits:" % resp['hits']['total']['value'])
         for hit in resp['hits']['hits']:
             print("%(Description)s %(Category)s" % hit["_source"])
-"""
