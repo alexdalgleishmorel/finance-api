@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import pandas as pd
 import json
 
@@ -6,6 +7,7 @@ import library.upload.upload as upload
 import library.query.transactions as transaction_query
 
 app = Flask(__name__)
+CORS(app)
 
 # POST endpoint to handle file upload and data insertion
 @app.route('/upload/file', methods=['POST'])
