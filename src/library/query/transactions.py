@@ -76,8 +76,11 @@ def query(user_id, table_name, filters):
             grouped_results = defaultdict(lambda: {'transactions': [], 'metadata': {}})
             for item in results:
                 description = item['Description']
-                grouped_results[description]['transactions'].append(item)
-                grouped_results[description]['metadata']['total_amount'] = grouped_results[description]['metadata'].get('total_amount', 0) + item['Amount']
+                grouped_results[description]['transactions'].append({
+                    **item,
+                    'Amount': round(float(item['Amount']), 2)
+                })
+                grouped_results[description]['metadata']['total_amount'] = round(float(grouped_results[description]['metadata'].get('total_amount', 0)) + float(item['Amount']), 2)
                 grouped_results[description]['metadata']['count'] = grouped_results[description]['metadata'].get('count', 0) + 1
 
             # Convert defaultdict to regular dict
