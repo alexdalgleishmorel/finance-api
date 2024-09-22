@@ -3,46 +3,62 @@ import pymysql
 from constants import db_settings
 
 def query(user_id, table_name, filters):
-    query = f"SELECT * FROM {table_name} WHERE UserID = %s"
+    # Base query with necessary joins to handle categories and custom descriptions
+    query = f"""
+        SELECT 
+            t.*, 
+            IFNULL(ctdm.CustomDescription, t.Description) AS DisplayDescription,
+            ucm.CategoryName 
+        FROM {table_name} t
+        LEFT JOIN CustomTransactionDescriptionMapping ctdm 
+            ON t.UserID = ctdm.UserID AND t.Description = ctdm.OriginalDescription
+        LEFT JOIN TransactionCategoryMapping tcm 
+            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+        LEFT JOIN UserCategories ucm 
+            ON tcm.CategoryID = ucm.CategoryID
+        WHERE t.UserID = %s
+    """
     params = [user_id]
 
     filter_clauses = []
-    
+
+    # Handling filters
     for key, value in filters.items():
         if key == 'start_date':
-            filter_clauses.append("Date >= %s")
+            filter_clauses.append("t.Date >= %s")
             params.append(value)
         elif key == 'end_date':
-            filter_clauses.append("Date <= %s")
+            filter_clauses.append("t.Date <= %s")
             params.append(value)
         elif key == 'description':
-            filter_clauses.append("Description LIKE %s")
+            filter_clauses.append("t.Description LIKE %s")
             params.append(f"%{value}%")
         elif key == 'type':
-            filter_clauses.append("Type = %s")
+            filter_clauses.append("t.TransactionType = %s")
             params.append(value)
         elif key == 'amount_lt':
-            filter_clauses.append("Amount < %s")
+            filter_clauses.append("t.Amount < %s")
             params.append(value)
         elif key == 'amount_eq':
-            filter_clauses.append("Amount = %s")
+            filter_clauses.append("t.Amount = %s")
             params.append(value)
         elif key == 'amount_gt':
-            filter_clauses.append("Amount > %s")
+            filter_clauses.append("t.Amount > %s")
             params.append(value)
         elif key == 'balance_lt':
-            filter_clauses.append("Balance < %s")
+            filter_clauses.append("t.Balance < %s")
             params.append(value)
         elif key == 'balance_eq':
-            filter_clauses.append("Balance = %s")
+            filter_clauses.append("t.Balance = %s")
             params.append(value)
         elif key == 'balance_gt':
-            filter_clauses.append("Balance > %s")
+            filter_clauses.append("t.Balance > %s")
             params.append(value)
         elif key == 'category':
-            filter_clauses.append("Category = %s")
+            filter_clauses.append("ucm.CategoryName in (%s)")
             params.append(value)
 
+    # Apply filters to the query
     if filter_clauses:
         query += " AND " + " AND ".join(filter_clauses)
 
@@ -50,12 +66,20 @@ def query(user_id, table_name, filters):
     connection = pymysql.connect(**db_settings)
     try:
         with connection.cursor(pymysql.cursors.DictCursor) as cursor:
-            # Get the filtered rows
+            # Execute the filtered query
             cursor.execute(query, params)
             results = cursor.fetchall()
 
-            # Calculate total count and total amount
-            count_query = f"SELECT COUNT(*) as total_count, SUM(Amount) as total_amount FROM {table_name} WHERE UserID = %s"
+            # Calculate total count and total amount based on the filtered transactions
+            count_query = f"""
+                SELECT COUNT(*) as total_count, SUM(t.Amount) as total_amount 
+                FROM {table_name} t
+                LEFT JOIN TransactionCategoryMapping tcm 
+                    ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+                LEFT JOIN UserCategories ucm 
+                    ON tcm.CategoryID = ucm.CategoryID
+                WHERE t.UserID = %s
+            """
             count_params = [user_id]
             if filter_clauses:
                 count_query += " AND " + " AND ".join(filter_clauses)
@@ -72,10 +96,10 @@ def query(user_id, table_name, filters):
                 'total_count': total_count
             }
 
-            # Group transactions by description and calculate sub-metadata
+            # Group transactions by custom or original description and calculate sub-metadata
             grouped_results = defaultdict(lambda: {'transactions': [], 'metadata': {}})
             for item in results:
-                description = item['Description']
+                description = item['DisplayDescription']
                 grouped_results[description]['transactions'].append({
                     **item,
                     'Amount': round(float(item['Amount']), 2)
