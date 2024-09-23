@@ -90,10 +90,18 @@ def query(user_id, table_name, filters):
             total_count = count_result['total_count']
             total_amount = count_result['total_amount'] if count_result['total_amount'] is not None else 0
 
+            # Fetch all categories defined by the user
+            cursor.execute(
+                "SELECT CategoryName FROM UserCategories WHERE UserID = %s", 
+                [user_id]
+            )
+            all_categories = [row['CategoryName'] for row in cursor.fetchall()]
+
             # Calculate metadata
             metadata = {
                 'total_amount': total_amount,
-                'total_count': total_count
+                'total_count': total_count,
+                'all_categories': all_categories
             }
 
             # Group transactions by custom or original description and calculate sub-metadata
@@ -104,7 +112,9 @@ def query(user_id, table_name, filters):
                     **item,
                     'Amount': round(float(item['Amount']), 2)
                 })
-                grouped_results[description]['metadata']['total_amount'] = round(float(grouped_results[description]['metadata'].get('total_amount', 0)) + float(item['Amount']), 2)
+                grouped_results[description]['metadata']['total_amount'] = round(
+                    float(grouped_results[description]['metadata'].get('total_amount', 0)) + float(item['Amount']), 2
+                )
                 grouped_results[description]['metadata']['count'] = grouped_results[description]['metadata'].get('count', 0) + 1
 
             # Convert defaultdict to regular dict
