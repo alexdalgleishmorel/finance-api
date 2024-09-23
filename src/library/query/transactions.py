@@ -99,11 +99,42 @@ def query(user_id, table_name, filters):
             )
             all_categories = [row['CategoryName'] for row in cursor.fetchall()]
 
+            # Generate time series data for each category
+            time_series_query = f"""
+                SELECT 
+                    ucm.CategoryName, 
+                    t.Date, 
+                    SUM(t.Amount) as total_amount
+                FROM {table_name} t
+                LEFT JOIN TransactionCategoryMapping tcm 
+                    ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+                LEFT JOIN UserCategories ucm 
+                    ON tcm.CategoryID = ucm.CategoryID
+                WHERE t.UserID = %s
+            """
+            time_series_params = [user_id]
+            if filter_clauses:
+                time_series_query += " AND " + " AND ".join(filter_clauses)
+                time_series_params.extend(params[1:])
+
+            # Group by date and category to calculate the daily total for each category
+            time_series_query += " GROUP BY ucm.CategoryName, t.Date ORDER BY t.Date"
+            cursor.execute(time_series_query, time_series_params)
+            time_series_data = cursor.fetchall()
+
+            # Format time series data for charting purposes
+            time_series = defaultdict(lambda: defaultdict(float))
+            for row in time_series_data:
+                category = row['CategoryName']
+                date = row['Date'].strftime('%Y-%m-%d')  # Format date for easier charting
+                time_series[category][date] = float(row['total_amount'])
+
             # Calculate metadata
             metadata = {
                 'total_amount': total_amount,
                 'total_count': total_count,
-                'all_categories': all_categories
+                'all_categories': all_categories,
+                'time_series': time_series
             }
 
             # Group transactions by custom or original description and calculate sub-metadata

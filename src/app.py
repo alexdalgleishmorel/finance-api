@@ -5,7 +5,8 @@ import json
 
 import library.upload.upload as upload
 import library.query.transactions as transaction_query
-import category
+import library.category as category
+import library.description as description
 
 app = Flask(__name__)
 CORS(app)

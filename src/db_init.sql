@@ -37,6 +37,7 @@ CREATE TABLE UserCategories (
     UserID VARCHAR(255),
     CategoryName VARCHAR(50) NOT NULL,
     Description TEXT,
+    ColorHex VARCHAR(7),
     UNIQUE(UserID, CategoryName),
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
