@@ -1,5 +1,7 @@
 import json
 import pymysql
+from pymysql.cursors import DictCursor
+import pandas as pd
 
 from collections import defaultdict
 import library.upload.chequing_transactions_prompt as chequing_transactions_prompt
@@ -10,6 +12,7 @@ import library.gpt as gpt
 
 def process_and_store_dataframe(user_id, dataframe, account_type):
     processed_data = []
+    new_transaction_rows = []
     new_transactions = 0
     gpt_requests = 0
 
@@ -17,34 +20,51 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
     connection = pymysql.connect(**db_settings)
 
     try:
-        with connection.cursor() as cursor:
+        with connection.cursor(DictCursor) as cursor:
             # Check existing categories and descriptions for the user
             cursor.execute(
-                "SELECT TransactionDescription, CategoryName FROM TransactionCategoryMapping WHERE UserID = %s",
+                """
+                SELECT tcm.TransactionDescription, ucm.CategoryName 
+                FROM TransactionCategoryMapping tcm
+                LEFT JOIN UserCategories ucm ON tcm.CategoryID = ucm.CategoryID
+                WHERE tcm.UserID = %s
+                """,
                 (user_id,)
             )
             existing_mappings = {row['TransactionDescription']: row['CategoryName'] for row in cursor.fetchall()}
 
             # Prepare data for processing
-            uncategorized_rows = []
+            uncategorized_rows = pd.DataFrame(columns=dataframe.columns)
+
             for i, row in dataframe.iterrows():
-                description = row['description']
+                if row['Type of Transaction'] == 'Credit':
+                    # Ignoring refunds or payments to the credit card
+                    continue
+
+                description = row['Description']
                 
                 # Check if the description has a pre-defined category
                 if description in existing_mappings:
                     # Use existing category
                     row_data = {
-                        'date': row['date'],
+                        'date': row['Date'],
                         'description': description,
-                        'type': row['type'],
-                        'amount': row['amount'],
-                        'balance': row.get('balance'),
+                        'type': row['Type of Transaction'],
+                        'amount': row['Amount'],
+                        'balance': row.get('Balance'),
                         'category': existing_mappings[description]
                     }
                     processed_data.append(row_data)
                 else:
                     # Add row to list of uncategorized rows for processing with GPT
-                    uncategorized_rows.append(row)
+                    uncategorized_rows = pd.concat([uncategorized_rows, pd.DataFrame([row])], ignore_index=True)
+
+            # Fetch all categories and their IDs once at the beginning, which will be used later for inserting transactions
+            cursor.execute(
+                "SELECT CategoryID, CategoryName FROM UserCategories WHERE UserID = %s",
+                (user_id,)
+            )
+            category_map = {row['CategoryName']: row['CategoryID'] for row in cursor.fetchall()}
 
             # Process uncategorized data in chunks to minimize GPT requests
             for i in range(0, len(uncategorized_rows), 100):
@@ -53,20 +73,24 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
                 
                 # Make request to GPT to categorize transactions
                 dynamic_prompt = get_user_categories_prompt(user_id)
-                chunk_processed_data = json.loads(gpt.make_request(prompt, chunk_str))
+                chunk_processed_data = json.loads(gpt.make_request(dynamic_prompt, chunk_str))
                 gpt_requests += len(chunk_processed_data)
 
                 # Add processed data to main list and update mapping
                 for row in chunk_processed_data:
                     processed_data.append(row)
-                    # Insert the new category mapping into the database
+
+                    # Retrieve CategoryID from the pre-fetched category map
+                    category_id = category_map.get(row['category'])
+
+                    # Insert the new category mapping into the database using CategoryID
                     cursor.execute(
                         """
                         INSERT IGNORE INTO TransactionCategoryMapping 
-                        (UserID, TransactionDescription, CategoryName)
+                        (UserID, TransactionDescription, CategoryID)
                         VALUES (%s, %s, %s)
                         """,
-                        (user_id, row['description'], row['category'])
+                        (user_id, row['description'], category_id)
                     )
 
             # Insert processed transactions into the Transactions table
@@ -85,7 +109,10 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
                     row['amount'], 
                     row.get('balance')
                 ))
-                new_transactions += 1
+                # Only count as new if the row was actually inserted
+                if cursor.rowcount > 0:
+                    new_transaction_rows.append(row)
+                    new_transactions += 1
 
         connection.commit()
 
@@ -98,7 +125,7 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
         'gpt_requests': gpt_requests
     }
 
-    return processed_data, summary
+    return new_transaction_rows, summary
 
 
 def get_user_categories_prompt(user_id):

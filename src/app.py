@@ -57,7 +57,7 @@ def query_credit_transactions(user_id):
     if request.args.get('amount_gt'): filters['amount_gt'] = request.args.get('amount_gt')
     if request.args.get('category'): filters['category'] = request.args.get('category')
     
-    return jsonify(transaction_query.query(user_id=user_id, table_name='CreditTransactions', filters=filters))
+    return jsonify(transaction_query.query(user_id=user_id, table_name='Transactions', filters=filters))
 
 
 # GET endpoint for querying chequing transactions
@@ -76,7 +76,7 @@ def query_chequing_transactions(user_id):
     if request.args.get('balance_gt'): filters['balance_gt'] = request.args.get('balance_gt')
     if request.args.get('category'): filters['category'] = request.args.get('category')
     
-    return jsonify(transaction_query.query(user_id=user_id, table_name='ChequingTransactions', filters=filters))
+    return jsonify(transaction_query.query(user_id=user_id, table_name='Transactions', filters=filters))
 
 if __name__ == '__main__':
     app.run(port=8000)

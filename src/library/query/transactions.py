@@ -55,8 +55,10 @@ def query(user_id, table_name, filters):
             filter_clauses.append("t.Balance > %s")
             params.append(value)
         elif key == 'category':
-            filter_clauses.append("ucm.CategoryName in (%s)")
-            params.append(value)
+            categories = value.split(',')
+            placeholders = ', '.join(['%s'] * len(categories))
+            filter_clauses.append(f"ucm.CategoryName IN ({placeholders})")
+            params.extend(categories)
 
     # Apply filters to the query
     if filter_clauses:
