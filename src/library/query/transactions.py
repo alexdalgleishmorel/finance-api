@@ -92,13 +92,20 @@ def query(user_id, table_name, filters):
             total_count = count_result['total_count']
             total_amount = count_result['total_amount'] if count_result['total_amount'] is not None else 0
 
-            # Fetch all categories defined by the user, including ColorHex
+            # Fetch all categories defined by the user, including ColorHex and Description
             cursor.execute(
-                "SELECT CategoryName, ColorHex FROM UserCategories WHERE UserID = %s", 
+                "SELECT CategoryName, ColorHex, Description FROM UserCategories WHERE UserID = %s", 
                 [user_id]
             )
-            # Update the structure to include both CategoryName and ColorHex
-            all_categories = [{'CategoryName': row['CategoryName'], 'ColorHex': row['ColorHex']} for row in cursor.fetchall()]
+            # Update the structure to include CategoryName, ColorHex, and Description
+            all_categories = [
+                {
+                    'CategoryName': row['CategoryName'],
+                    'ColorHex': row['ColorHex'],
+                    'Description': row['Description']
+                }
+                for row in cursor.fetchall()
+            ]
 
             # Generate time series data for each category
             time_series_query = f"""
