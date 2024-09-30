@@ -13,7 +13,7 @@ CORS(app)
 
 
 @app.route('/expenses/upload', methods=['POST'])
-def upload_file():
+def upload_expenses_file():
     # Check if request contains a file part
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -41,7 +41,7 @@ def upload_file():
 
 
 @app.route('/chequing/upload', methods=['POST'])
-def upload_file():
+def upload_chequing_file():
     # Check if request contains a file part
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
@@ -71,14 +71,14 @@ def upload_file():
 # GET endpoint for querying credit transactions
 @app.route('/expenses/query/<user_id>', methods=['GET'])
 def query_credit_transactions(user_id):
-    filters = {key: request.args.get(key) for key in transaction_query.GENERAL_FITLERS if request.args.get(key)}
+    filters = {key: request.args.get(key) for key in transaction_query.GENERAL_FILTERS if request.args.get(key)}
     return jsonify(transaction_query.query(user_id=user_id, table_name='CreditTransactions', filters=filters))
 
 
 # GET endpoint for querying chequing transactions
 @app.route('/chequing/query/<user_id>', methods=['GET'])
 def query_chequing_transactions(user_id):
-    filters = {key: request.args.get(key) for key in transaction_query.GENERAL_FITLERS if request.args.get(key)}
+    filters = {key: request.args.get(key) for key in transaction_query.GENERAL_FILTERS if request.args.get(key)}
     return jsonify(transaction_query.query(user_id=user_id, table_name='ChequingTransactions', filters=filters))
 
 

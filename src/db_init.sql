@@ -47,6 +47,7 @@ CREATE TABLE DefaultCategories (
     CategoryID INT PRIMARY KEY AUTO_INCREMENT,
     AccountType ENUM('Chequing', 'Credit', 'Investment') NOT NULL,
     CategoryName VARCHAR(50) NOT NULL,
+    ColorHex VARCHAR(7),
     Description TEXT
 );
 
@@ -85,3 +86,14 @@ CREATE TABLE UploadProgress (
     PRIMARY KEY (UserID, AccountType),
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
+
+INSERT INTO DefaultCategories (AccountType, CategoryName, Description)
+VALUES
+    ('Credit', 'Unknown', 'Any transaction that does not fall under any of the other categories'),
+    ('Credit', 'Shopping', 'Purchases made at for clothes, electronics, ecommerce of any sort, etc.'),
+    ('Credit', 'Dining Out', 'Expenses for eating out at restaurants or fast food'),
+    ('Credit', 'Travel', 'Expenses related to travel and accommodation'),
+    ('Credit', 'Groceries', 'Purchases made at grocery stores'),
+    ('Credit', 'Vehicle', 'Payments for vehicle maintenance or gas'),
+    ('Credit', 'Subscriptions', 'Monthly or yearly subscriptions to services')
+;

@@ -17,10 +17,19 @@ GENERAL_FILTERS = [
     'type', 
 ]
 
+def build_user_filter(user_id):
+    """
+    Ensures that the user_id condition is only applied once in queries.
+    """
+    return "t.UserID = %s", [user_id]
+
 def build_query(table_name, user_id, filters):
     """
     Builds the SQL query for fetching transactions based on the filters provided.
     """
+    # Get the user filter condition
+    user_filter, params = build_user_filter(user_id)
+
     # Base query with necessary joins
     query = f"""
         SELECT 
@@ -36,9 +45,9 @@ def build_query(table_name, user_id, filters):
             ON tcm.CategoryID = ucm.CategoryID
         LEFT JOIN DefaultCategories dcm
             ON ucm.CategoryID IS NULL AND tcm.CategoryID = dcm.CategoryID
-        WHERE t.UserID = %s
+        WHERE {user_filter}
     """
-    params = [user_id]  # Start with user_id in params
+    
     filter_clauses = []
 
     # Add filter conditions
@@ -75,10 +84,12 @@ def execute_query(query, params):
     finally:
         connection.close()
 
-def calculate_total_metadata(table_name, user_id, filter_clauses, params):
+def calculate_total_metadata(table_name, user_id, filters):
     """
     Calculates total count and total amount for the filtered transactions.
     """
+    user_filter, user_params = build_user_filter(user_id)
+
     count_query = f"""
         SELECT COUNT(*) as total_count, SUM(t.Amount) as total_amount 
         FROM {table_name} t
@@ -88,9 +99,26 @@ def calculate_total_metadata(table_name, user_id, filter_clauses, params):
             ON tcm.CategoryID = ucm.CategoryID
         LEFT JOIN DefaultCategories dcm
             ON ucm.CategoryID IS NULL AND tcm.CategoryID = dcm.CategoryID
-        WHERE t.UserID = %s
+        WHERE {user_filter}
     """
-    count_params = [user_id] + params[1:]  # Use same params, skip user_id
+    count_params = user_params.copy()  # Use same params, skip user_id
+
+    filter_clauses = []
+    
+    # Add filter conditions for the count query
+    for key, value in filters.items():
+        if key == 'start_date':
+            filter_clauses.append("t.Date >= %s")
+            count_params.append(value)
+        elif key == 'end_date':
+            filter_clauses.append("t.Date <= %s")
+            count_params.append(value)
+        elif key == 'category':
+            categories = value.split(',')
+            placeholders = ', '.join(['%s'] * len(categories))
+            filter_clauses.append(f"(ucm.CategoryName IN ({placeholders}) OR dcm.CategoryName IN ({placeholders}))")
+            count_params.extend(categories)
+
     if filter_clauses:
         count_query += " AND " + " AND ".join(filter_clauses)
 
@@ -136,10 +164,12 @@ def fetch_user_categories_or_defaults(user_id, account_type):
     finally:
         connection.close()
 
-def generate_time_series_data(table_name, user_id, filter_clauses, params):
+def generate_time_series_data(table_name, user_id, filters):
     """
     Generates time series data for each category for charting purposes.
     """
+    user_filter, params = build_user_filter(user_id)
+
     time_series_query = f"""
         SELECT 
             IFNULL(ucm.CategoryName, dcm.CategoryName) AS CategoryName, 
@@ -152,15 +182,23 @@ def generate_time_series_data(table_name, user_id, filter_clauses, params):
             ON tcm.CategoryID = ucm.CategoryID
         LEFT JOIN DefaultCategories dcm
             ON ucm.CategoryID IS NULL AND tcm.CategoryID = dcm.CategoryID
-        WHERE t.UserID = %s
+        WHERE {user_filter}
     """
-    time_series_params = [user_id] + params[1:]  # Extend with the same params
+    filter_clauses = []
 
+    for key, value in filters.items():
+        if key == 'start_date':
+            filter_clauses.append("t.Date >= %s")
+            params.append(value)
+        elif key == 'end_date':
+            filter_clauses.append("t.Date <= %s")
+            params.append(value)
+    
     if filter_clauses:
         time_series_query += " AND " + " AND ".join(filter_clauses)
 
     time_series_query += " GROUP BY CategoryName, t.Date ORDER BY t.Date"
-    time_series_data = execute_query(time_series_query, time_series_params)
+    time_series_data = execute_query(time_series_query, params)
 
     # Format the time series data
     time_series = defaultdict(lambda: defaultdict(float))
@@ -225,14 +263,13 @@ def query(user_id, table_name, filters):
     results = execute_query(query_str, params)
 
     # Calculate total metadata
-    filter_clauses = [clause for clause in query_str.split(' WHERE ')[1].split(' AND ') if 't.' in clause]  # Extract filters from query
-    total_count, total_amount = calculate_total_metadata(table_name, user_id, filter_clauses, params)
+    total_count, total_amount = calculate_total_metadata(table_name, user_id, filters)
 
     # Fetch user categories or default categories
     all_categories = fetch_user_categories_or_defaults(user_id, filters.get('account_type', 'Chequing'))
 
     # Generate time series data for charting
-    time_series = generate_time_series_data(table_name, user_id, filter_clauses, params)
+    time_series = generate_time_series_data(table_name, user_id, filters)
 
     # Group transactions by description and apply filters
     grouped_results = group_transactions_by_description(results)

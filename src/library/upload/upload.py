@@ -52,7 +52,7 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
 
             # Process uncategorized data with GPT in batches, updating progress after each batch
             processed_data, gpt_requests = process_uncategorized_data_with_gpt(
-                cursor, uncategorized_rows, user_id, processed_data, category_map, account_type
+                connection, cursor, uncategorized_rows, user_id, processed_data, category_map, account_type
             )
 
             # Insert processed transactions into the appropriate transactions table
@@ -147,7 +147,7 @@ def get_user_categories_or_defaults(cursor, user_id, account_type):
     return default_categories
 
 
-def process_uncategorized_data_with_gpt(cursor, uncategorized_rows, user_id, processed_data, category_map, account_type):
+def process_uncategorized_data_with_gpt(connection, cursor, uncategorized_rows, user_id, processed_data, category_map, account_type):
     """
     Uses GPT to categorize uncategorized transactions and insert new category mappings.
     Also updates upload progress after each batch.
@@ -179,6 +179,7 @@ def process_uncategorized_data_with_gpt(cursor, uncategorized_rows, user_id, pro
         # Update the upload progress after each batch
         progress = ((i + 1) / total_batches) * 100
         update_upload_progress(cursor, user_id, account_type, progress)
+        connection.commit() # Immediately updating the upload progress
 
     return processed_data, gpt_requests
 
