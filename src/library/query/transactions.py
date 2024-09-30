@@ -30,20 +30,23 @@ def build_query(table_name, user_id, filters, user_categories_exist):
     # Get the user filter condition
     user_filter, params = build_user_filter(user_id)
 
+    # Adjust join and conditions based on user categories existence
+    if user_categories_exist:
+        category_join = """
+            LEFT JOIN TransactionCategoryMapping tcm 
+                ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+            LEFT JOIN UserCategories ucm 
+                ON tcm.CategoryID = ucm.CategoryID
+        """
+    else:
+        category_join = """
+            LEFT JOIN TransactionCategoryMapping tcm 
+                ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+            LEFT JOIN UserCategories ucm 
+                ON tcm.CategoryID = ucm.CategoryID AND ucm.UserID IS NULL
+        """
+    
     # Base query with necessary joins
-    category_join = """
-        LEFT JOIN TransactionCategoryMapping tcm 
-            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
-        LEFT JOIN UserCategories ucm 
-            ON tcm.CategoryID = ucm.CategoryID
-    """ if user_categories_exist else """
-        LEFT JOIN TransactionCategoryMapping tcm 
-            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
-        LEFT JOIN UserCategories ucm
-            ON tcm.CategoryID = ucm.CategoryID
-        WHERE ucm.UserID IS NULL
-    """
-
     query = f"""
         SELECT 
             t.*, 
@@ -98,18 +101,20 @@ def calculate_total_metadata(table_name, user_id, filters, user_categories_exist
     """
     user_filter, user_params = build_user_filter(user_id)
 
-    category_join = """
-        LEFT JOIN TransactionCategoryMapping tcm 
-            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
-        LEFT JOIN UserCategories ucm 
-            ON tcm.CategoryID = ucm.CategoryID
-    """ if user_categories_exist else """
-        LEFT JOIN TransactionCategoryMapping tcm 
-            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
-        LEFT JOIN UserCategories ucm
-            ON tcm.CategoryID = ucm.CategoryID
-        WHERE ucm.UserID IS NULL
-    """
+    if user_categories_exist:
+        category_join = """
+            LEFT JOIN TransactionCategoryMapping tcm 
+                ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+            LEFT JOIN UserCategories ucm 
+                ON tcm.CategoryID = ucm.CategoryID
+        """
+    else:
+        category_join = """
+            LEFT JOIN TransactionCategoryMapping tcm 
+                ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+            LEFT JOIN UserCategories ucm 
+                ON tcm.CategoryID = ucm.CategoryID AND ucm.UserID IS NULL
+        """
 
     count_query = f"""
         SELECT COUNT(*) as total_count, SUM(t.Amount) as total_amount 
@@ -117,7 +122,7 @@ def calculate_total_metadata(table_name, user_id, filters, user_categories_exist
         {category_join}
         WHERE {user_filter}
     """
-    count_params = user_params.copy()  # Use same params, skip user_id
+    count_params = user_params.copy()
 
     filter_clauses = []
     
@@ -196,9 +201,8 @@ def generate_time_series_data(table_name, user_id, filters, user_categories_exis
     """ if user_categories_exist else """
         LEFT JOIN TransactionCategoryMapping tcm 
             ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
-        LEFT JOIN UserCategories ucm
-            ON tcm.CategoryID = ucm.CategoryID
-        WHERE ucm.UserID IS NULL
+        LEFT JOIN UserCategories ucm 
+            ON tcm.CategoryID = ucm.CategoryID AND ucm.UserID IS NULL
     """
 
     time_series_query = f"""
@@ -313,6 +317,7 @@ def query(user_id, table_name, filters, account_type):
         'total_amount': total_amount,
         'total_count': total_count,
         'all_categories': all_categories,
+        'is_custom_categories': user_categories_exist,
         'time_series': time_series
     }
 

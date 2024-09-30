@@ -178,21 +178,20 @@ def insert_transactions(cursor, processed_data, user_id, account_type, new_trans
     """
     Inserts the processed transactions into the respective account type's transaction table.
     """
-    table_name = 'ChequingTransactions' if account_type == 'Chequing' else 'CreditTransactions'
+    table_name = 'CreditTransactions'
 
     for row in processed_data:
         sql = f"""
         INSERT IGNORE INTO {table_name}
-        (UserID, Date, Description, TransactionType, Amount, Balance) 
-        VALUES (%s, %s, %s, %s, %s, %s)
+        (UserID, Date, Description, TransactionType, Amount) 
+        VALUES (%s, %s, %s, %s, %s)
         """
         cursor.execute(sql, (
             user_id, 
             row['date'], 
             row['description'], 
             row['type'], 
-            row['amount'], 
-            row.get('balance')
+            row['amount'],
         ))
 
         # Only count as new if the row was actually inserted
