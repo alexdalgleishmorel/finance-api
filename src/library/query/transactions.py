@@ -23,7 +23,7 @@ def build_user_filter(user_id):
     """
     return "t.UserID = %s", [user_id]
 
-def build_query(table_name, user_id, filters):
+def build_query(table_name, user_id, filters, user_categories_exist):
     """
     Builds the SQL query for fetching transactions based on the filters provided.
     """
@@ -31,20 +31,28 @@ def build_query(table_name, user_id, filters):
     user_filter, params = build_user_filter(user_id)
 
     # Base query with necessary joins
-    query = f"""
-        SELECT 
-            t.*, 
-            IFNULL(ctdm.CustomDescription, t.Description) AS DisplayDescription,
-            IFNULL(ucm.CategoryName, dcm.CategoryName) AS CategoryName
-        FROM {table_name} t
-        LEFT JOIN CustomTransactionDescriptionMapping ctdm 
-            ON t.UserID = ctdm.UserID AND t.Description = ctdm.OriginalDescription
+    category_join = """
         LEFT JOIN TransactionCategoryMapping tcm 
             ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
         LEFT JOIN UserCategories ucm 
             ON tcm.CategoryID = ucm.CategoryID
-        LEFT JOIN DefaultCategories dcm
-            ON ucm.CategoryID IS NULL AND tcm.CategoryID = dcm.CategoryID
+    """ if user_categories_exist else """
+        LEFT JOIN TransactionCategoryMapping tcm 
+            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+        LEFT JOIN UserCategories ucm
+            ON tcm.CategoryID = ucm.CategoryID
+        WHERE ucm.UserID IS NULL
+    """
+
+    query = f"""
+        SELECT 
+            t.*, 
+            IFNULL(ctdm.CustomDescription, t.Description) AS DisplayDescription,
+            ucm.CategoryName AS CategoryName
+        FROM {table_name} t
+        LEFT JOIN CustomTransactionDescriptionMapping ctdm 
+            ON t.UserID = ctdm.UserID AND t.Description = ctdm.OriginalDescription
+        {category_join}
         WHERE {user_filter}
     """
     
@@ -64,7 +72,7 @@ def build_query(table_name, user_id, filters):
         elif key == 'category':
             categories = value.split(',')
             placeholders = ', '.join(['%s'] * len(categories))
-            filter_clauses.append(f"(ucm.CategoryName IN ({placeholders}) OR dcm.CategoryName IN ({placeholders}))")
+            filter_clauses.append(f"(ucm.CategoryName IN ({placeholders}))")
             params.extend(categories)
 
     if filter_clauses:
@@ -84,21 +92,29 @@ def execute_query(query, params):
     finally:
         connection.close()
 
-def calculate_total_metadata(table_name, user_id, filters):
+def calculate_total_metadata(table_name, user_id, filters, user_categories_exist):
     """
     Calculates total count and total amount for the filtered transactions.
     """
     user_filter, user_params = build_user_filter(user_id)
 
-    count_query = f"""
-        SELECT COUNT(*) as total_count, SUM(t.Amount) as total_amount 
-        FROM {table_name} t
+    category_join = """
         LEFT JOIN TransactionCategoryMapping tcm 
             ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
         LEFT JOIN UserCategories ucm 
             ON tcm.CategoryID = ucm.CategoryID
-        LEFT JOIN DefaultCategories dcm
-            ON ucm.CategoryID IS NULL AND tcm.CategoryID = dcm.CategoryID
+    """ if user_categories_exist else """
+        LEFT JOIN TransactionCategoryMapping tcm 
+            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+        LEFT JOIN UserCategories ucm
+            ON tcm.CategoryID = ucm.CategoryID
+        WHERE ucm.UserID IS NULL
+    """
+
+    count_query = f"""
+        SELECT COUNT(*) as total_count, SUM(t.Amount) as total_amount 
+        FROM {table_name} t
+        {category_join}
         WHERE {user_filter}
     """
     count_params = user_params.copy()  # Use same params, skip user_id
@@ -116,7 +132,7 @@ def calculate_total_metadata(table_name, user_id, filters):
         elif key == 'category':
             categories = value.split(',')
             placeholders = ', '.join(['%s'] * len(categories))
-            filter_clauses.append(f"(ucm.CategoryName IN ({placeholders}) OR dcm.CategoryName IN ({placeholders}))")
+            filter_clauses.append(f"(ucm.CategoryName IN ({placeholders}))")
             count_params.extend(categories)
 
     if filter_clauses:
@@ -150,38 +166,48 @@ def fetch_user_categories_or_defaults(user_id, account_type):
             """, (user_id, account_type))
             user_categories = cursor.fetchall()
 
+            user_categories_exist = bool(user_categories)
+
             # If no user categories are found, fetch default categories
-            if not user_categories:
+            if not user_categories_exist:
                 cursor.execute("""
                     SELECT CategoryID, CategoryName, ColorHex, Description 
-                    FROM DefaultCategories 
-                    WHERE AccountType = %s
+                    FROM UserCategories
+                    WHERE UserID IS NULL AND AccountType = %s
                 """, (account_type,))
                 user_categories = cursor.fetchall()
 
-            return user_categories
+            return user_categories, user_categories_exist
 
     finally:
         connection.close()
 
-def generate_time_series_data(table_name, user_id, filters):
+def generate_time_series_data(table_name, user_id, filters, user_categories_exist):
     """
     Generates time series data for each category for charting purposes.
     """
     user_filter, params = build_user_filter(user_id)
 
-    time_series_query = f"""
-        SELECT 
-            IFNULL(ucm.CategoryName, dcm.CategoryName) AS CategoryName, 
-            t.Date, 
-            SUM(t.Amount) as total_amount
-        FROM {table_name} t
+    category_join = """
         LEFT JOIN TransactionCategoryMapping tcm 
             ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
         LEFT JOIN UserCategories ucm 
             ON tcm.CategoryID = ucm.CategoryID
-        LEFT JOIN DefaultCategories dcm
-            ON ucm.CategoryID IS NULL AND tcm.CategoryID = dcm.CategoryID
+    """ if user_categories_exist else """
+        LEFT JOIN TransactionCategoryMapping tcm 
+            ON t.UserID = tcm.UserID AND t.Description = tcm.TransactionDescription
+        LEFT JOIN UserCategories ucm
+            ON tcm.CategoryID = ucm.CategoryID
+        WHERE ucm.UserID IS NULL
+    """
+
+    time_series_query = f"""
+        SELECT 
+            ucm.CategoryName AS CategoryName, 
+            t.Date, 
+            SUM(t.Amount) as total_amount
+        FROM {table_name} t
+        {category_join}
         WHERE {user_filter}
     """
     filter_clauses = []
@@ -258,18 +284,18 @@ def query(user_id, table_name, filters, account_type):
     Main function to query transactions and calculate metadata.
     """
 
+    # Fetch user categories or default categories
+    all_categories, user_categories_exist = fetch_user_categories_or_defaults(user_id, account_type)
+
     # Build the main query and execute it
-    query_str, params = build_query(table_name, user_id, filters)
+    query_str, params = build_query(table_name, user_id, filters, user_categories_exist)
     results = execute_query(query_str, params)
 
     # Calculate total metadata
-    total_count, total_amount = calculate_total_metadata(table_name, user_id, filters)
-
-    # Fetch user categories or default categories
-    all_categories = fetch_user_categories_or_defaults(user_id, account_type)
+    total_count, total_amount = calculate_total_metadata(table_name, user_id, filters, user_categories_exist)
 
     # Generate time series data for charting
-    time_series = generate_time_series_data(table_name, user_id, filters)
+    time_series = generate_time_series_data(table_name, user_id, filters, user_categories_exist)
 
     # Group transactions by description and apply filters
     grouped_results = group_transactions_by_description(results)

@@ -26,7 +26,6 @@ CREATE TABLE CreditTransactions (
     Description TEXT,
     TransactionType VARCHAR(50),
     Amount DECIMAL(10, 2) NOT NULL,
-    Balance DECIMAL(10, 2),
     UNIQUE(Date, Description(100), Amount, TransactionType, UserID),
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
@@ -53,7 +52,7 @@ CREATE TABLE DefaultCategories (
 
 CREATE TABLE UserCategories (
     CategoryID INTEGER PRIMARY KEY AUTO_INCREMENT,
-    UserID VARCHAR(255),
+    UserID VARCHAR(255) DEFAULT NULL,
     AccountType ENUM('Chequing', 'Credit', 'Investment') NOT NULL,
     CategoryName VARCHAR(50) NOT NULL,
     Description TEXT,
@@ -87,13 +86,13 @@ CREATE TABLE UploadProgress (
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
-INSERT INTO DefaultCategories (AccountType, CategoryName, Description)
+INSERT INTO UserCategories (UserID, AccountType, CategoryName, Description, ColorHex)
 VALUES
-    ('Credit', 'Unknown', 'Any transaction that does not fall under any of the other categories'),
-    ('Credit', 'Shopping', 'Purchases made at for clothes, electronics, ecommerce of any sort, etc.'),
-    ('Credit', 'Dining Out', 'Expenses for eating out at restaurants or fast food'),
-    ('Credit', 'Travel', 'Expenses related to travel and accommodation'),
-    ('Credit', 'Groceries', 'Purchases made at grocery stores'),
-    ('Credit', 'Vehicle', 'Payments for vehicle maintenance or gas'),
-    ('Credit', 'Subscriptions', 'Monthly or yearly subscriptions to services')
+    (NULL, 'Credit', 'Unknown', 'Any transaction that does not fall under any of the other categories', '#CCCCCC'),
+    (NULL, 'Credit', 'Shopping', 'Purchases made for clothes, electronics, ecommerce of any sort, etc.', '#FF5733'),
+    (NULL, 'Credit', 'Dining Out', 'Expenses for eating out at restaurants or fast food', '#33FF57'),
+    (NULL, 'Credit', 'Travel', 'Expenses related to travel and accommodation', '#33A1FF'),
+    (NULL, 'Credit', 'Groceries', 'Purchases made at grocery stores', '#FF33F6'),
+    (NULL, 'Credit', 'Vehicle', 'Payments for vehicle maintenance or gas', '#FF3333'),
+    (NULL, 'Credit', 'Subscriptions', 'Monthly or yearly subscriptions to services', '#3333FF')
 ;
