@@ -33,27 +33,6 @@ def query(user_id, table_name, filters):
         elif key == 'description':
             filter_clauses.append("t.Description LIKE %s")
             params.append(f"%{value}%")
-        elif key == 'type':
-            filter_clauses.append("t.TransactionType = %s")
-            params.append(value)
-        elif key == 'amount_lt':
-            filter_clauses.append("t.Amount < %s")
-            params.append(value)
-        elif key == 'amount_eq':
-            filter_clauses.append("t.Amount = %s")
-            params.append(value)
-        elif key == 'amount_gt':
-            filter_clauses.append("t.Amount > %s")
-            params.append(value)
-        elif key == 'balance_lt':
-            filter_clauses.append("t.Balance < %s")
-            params.append(value)
-        elif key == 'balance_eq':
-            filter_clauses.append("t.Balance = %s")
-            params.append(value)
-        elif key == 'balance_gt':
-            filter_clauses.append("t.Balance > %s")
-            params.append(value)
         elif key == 'category':
             categories = value.split(',')
             placeholders = ', '.join(['%s'] * len(categories))
