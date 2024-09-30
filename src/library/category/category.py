@@ -1,4 +1,7 @@
+from flask import jsonify
 import pymysql
+
+from constants import db_settings
 
 def delete_category_mapping(category_name, user_id):
     connection = pymysql.connect(**db_settings)

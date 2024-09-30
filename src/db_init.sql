@@ -7,16 +7,27 @@ CREATE TABLE Users (
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE Transactions (
+CREATE TABLE ChequingTransactions (
     ID INTEGER PRIMARY KEY AUTO_INCREMENT,
     UserID VARCHAR(255),
-    AccountType ENUM('Credit', 'Chequing') NOT NULL,
     Date DATE NOT NULL,
     Description TEXT,
     TransactionType VARCHAR(50),
     Amount DECIMAL(10, 2) NOT NULL,
     Balance DECIMAL(10, 2),
-    UNIQUE(Date, Description(100), Amount, TransactionType, UserID, AccountType),
+    UNIQUE(Date, Description(100), Amount, TransactionType, UserID),
+    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);
+
+CREATE TABLE CreditTransactions (
+    ID INTEGER PRIMARY KEY AUTO_INCREMENT,
+    UserID VARCHAR(255),
+    Date DATE NOT NULL,
+    Description TEXT,
+    TransactionType VARCHAR(50),
+    Amount DECIMAL(10, 2) NOT NULL,
+    Balance DECIMAL(10, 2),
+    UNIQUE(Date, Description(100), Amount, TransactionType, UserID),
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
@@ -32,13 +43,21 @@ CREATE TABLE InvestmentAccounts (
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 
+CREATE TABLE DefaultCategories (
+    CategoryID INT PRIMARY KEY AUTO_INCREMENT,
+    AccountType ENUM('Chequing', 'Credit', 'Investment') NOT NULL,
+    CategoryName VARCHAR(50) NOT NULL,
+    Description TEXT
+);
+
 CREATE TABLE UserCategories (
     CategoryID INTEGER PRIMARY KEY AUTO_INCREMENT,
     UserID VARCHAR(255),
+    AccountType ENUM('Chequing', 'Credit', 'Investment') NOT NULL,
     CategoryName VARCHAR(50) NOT NULL,
     Description TEXT,
     ColorHex VARCHAR(7),
-    UNIQUE(UserID, CategoryName),
+    UNIQUE(UserID, AccountType, CategoryName),
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
 

@@ -1,4 +1,6 @@
+from flask import jsonify
 import pymysql
+from constants import db_settings
 
 def delete_description_mapping(original_description, user_id):
     connection = pymysql.connect(**db_settings)
@@ -24,7 +26,7 @@ def delete_description_mapping(original_description, user_id):
 def update_description_mapping(original_description, new_description, user_id):
     if not original_description or not user_id:
         return jsonify({'error': 'Original description and user ID are required.'}), 400
-    if not new_custom_description:
+    if not new_description:
         return jsonify({'error': 'New custom description is required.'}), 400
 
     connection = pymysql.connect(**db_settings)
@@ -36,7 +38,7 @@ def update_description_mapping(original_description, new_description, user_id):
                 SET CustomDescription = %s 
                 WHERE OriginalDescription = %s AND UserID = %s
             """
-            cursor.execute(sql, (new_custom_description, original_description, user_id))
+            cursor.execute(sql, (new_description, original_description, user_id))
             connection.commit()
             # Check if the row was updated
             if cursor.rowcount > 0:
