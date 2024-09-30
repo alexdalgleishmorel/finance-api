@@ -100,7 +100,7 @@ def process_existing_mappings(dataframe, existing_mappings):
         if row['Type of Transaction'] == 'Credit':  # Ignore credit transactions like refunds
             continue
         
-        description = row['Description']
+        description = row['Description'].strip()
 
         if description in existing_mappings:
             # Use the pre-existing category mapping
@@ -164,7 +164,7 @@ def process_uncategorized_data_with_gpt(connection, cursor, uncategorized_rows, 
                     (UserID, TransactionDescription, CategoryID)
                     VALUES (%s, %s, %s)
                     ON DUPLICATE KEY UPDATE CategoryID = %s
-                """, (user_id, row['description'], category_id, category_id))
+                """, (user_id, row['description'].strip(), category_id, category_id))
 
         # Update the upload progress after each batch
         progress = ((i + 1) / total_batches) * 100
@@ -189,7 +189,7 @@ def insert_transactions(cursor, processed_data, user_id, account_type, new_trans
         cursor.execute(sql, (
             user_id, 
             row['date'], 
-            row['description'], 
+            row['description'].strip(), 
             row['type'], 
             row['amount'],
         ))
