@@ -158,6 +158,29 @@ def query(user_id, table_name, filters):
                 )
                 grouped_results[description]['metadata']['count'] = grouped_results[description]['metadata'].get('count', 0) + 1
 
+            # After grouping and summing amounts, apply the amount filters if they exist
+            if 'amount_lt' in filters or 'amount_gt' in filters or 'amount_eq' in filters:
+                amount_filtered_results = {}
+                filtered_total_amount = 0
+                filtered_total_count = 0
+                for description, data in grouped_results.items():
+                    total_amount = data['metadata']['total_amount']
+                    if 'amount_lt' in filters and total_amount >= float(filters['amount_lt']):
+                        continue
+                    if 'amount_eq' in filters and total_amount != float(filters['amount_eq']):
+                        continue
+                    if 'amount_gt' in filters and total_amount <= float(filters['amount_gt']):
+                        continue
+                    # Update filtered totals
+                    filtered_total_amount += total_amount
+                    filtered_total_count += data['metadata']['count']
+                    amount_filtered_results[description] = data
+                # Replace grouped_results with filtered results
+                grouped_results = amount_filtered_results
+                # Update the overall metadata based on filtered results
+                metadata['total_amount'] = filtered_total_amount
+                metadata['total_count'] = filtered_total_count
+
             # Convert defaultdict to regular dict
             grouped_results = dict(grouped_results)
 
