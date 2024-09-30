@@ -128,23 +128,11 @@ def get_user_categories_or_defaults(cursor, user_id, account_type):
     cursor.execute("""
         SELECT CategoryID, CategoryName 
         FROM UserCategories 
-        WHERE UserID = %s AND AccountType = %s
+        WHERE (UserID = %s OR UserID IS NULL) AND AccountType = %s
     """, (user_id, account_type))
-    user_categories = {row['CategoryName']: row['CategoryID'] for row in cursor.fetchall()}
+    categories = {row['CategoryName']: row['CategoryID'] for row in cursor.fetchall()}
 
-    # If user categories exist, return them
-    if user_categories:
-        return user_categories
-
-    # If no user categories, fall back to default categories
-    cursor.execute("""
-        SELECT CategoryID, CategoryName 
-        FROM DefaultCategories 
-        WHERE AccountType = %s
-    """, (account_type,))
-    default_categories = {row['CategoryName']: row['CategoryID'] for row in cursor.fetchall()}
-
-    return default_categories
+    return categories
 
 
 def process_uncategorized_data_with_gpt(connection, cursor, uncategorized_rows, user_id, processed_data, category_map, account_type):
@@ -170,16 +158,18 @@ def process_uncategorized_data_with_gpt(connection, cursor, uncategorized_rows, 
 
             # Insert new category mapping into the database
             category_id = category_map.get(row['category'])
-            cursor.execute("""
-                INSERT IGNORE INTO TransactionCategoryMapping 
-                (UserID, TransactionDescription, CategoryID)
-                VALUES (%s, %s, %s)
-            """, (user_id, row['description'], category_id))
+            if category_id:
+                cursor.execute("""
+                    INSERT INTO TransactionCategoryMapping 
+                    (UserID, TransactionDescription, CategoryID)
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE CategoryID = %s
+                """, (user_id, row['description'], category_id, category_id))
 
         # Update the upload progress after each batch
         progress = ((i + 1) / total_batches) * 100
         update_upload_progress(cursor, user_id, account_type, progress)
-        connection.commit() # Immediately updating the upload progress
+        connection.commit()  # Immediately commit upload progress
 
     return processed_data, gpt_requests
 
