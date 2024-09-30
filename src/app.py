@@ -72,14 +72,14 @@ def upload_chequing_file():
 @app.route('/expenses/query/<user_id>', methods=['GET'])
 def query_credit_transactions(user_id):
     filters = {key: request.args.get(key) for key in transaction_query.GENERAL_FILTERS if request.args.get(key)}
-    return jsonify(transaction_query.query(user_id=user_id, table_name='CreditTransactions', filters=filters))
+    return jsonify(transaction_query.query(user_id=user_id, table_name='CreditTransactions', filters=filters, account_type='Credit'))
 
 
 # GET endpoint for querying chequing transactions
 @app.route('/chequing/query/<user_id>', methods=['GET'])
 def query_chequing_transactions(user_id):
     filters = {key: request.args.get(key) for key in transaction_query.GENERAL_FILTERS if request.args.get(key)}
-    return jsonify(transaction_query.query(user_id=user_id, table_name='ChequingTransactions', filters=filters))
+    return jsonify(transaction_query.query(user_id=user_id, table_name='ChequingTransactions', filters=filters, account_type='Chequing'))
 
 
 # Endpoint to delete a category by CategoryName for a specific user

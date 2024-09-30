@@ -253,7 +253,7 @@ def apply_amount_filters(grouped_results, filters):
 
     return grouped_results, None, None
 
-def query(user_id, table_name, filters):
+def query(user_id, table_name, filters, account_type):
     """
     Main function to query transactions and calculate metadata.
     """
@@ -266,7 +266,7 @@ def query(user_id, table_name, filters):
     total_count, total_amount = calculate_total_metadata(table_name, user_id, filters)
 
     # Fetch user categories or default categories
-    all_categories = fetch_user_categories_or_defaults(user_id, filters.get('account_type', 'Chequing'))
+    all_categories = fetch_user_categories_or_defaults(user_id, account_type)
 
     # Generate time series data for charting
     time_series = generate_time_series_data(table_name, user_id, filters)
