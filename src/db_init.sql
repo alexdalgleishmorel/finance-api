@@ -77,3 +77,11 @@ CREATE TABLE CustomTransactionDescriptionMapping (
     PRIMARY KEY (UserID, OriginalDescription(100)),
     FOREIGN KEY (UserID) REFERENCES Users(UserID)
 );
+
+CREATE TABLE UploadProgress (
+    UserID VARCHAR(255),
+    AccountType ENUM('Chequing', 'Credit', 'Investment') NOT NULL,
+    Progress DECIMAL(5, 2) DEFAULT NULL,
+    PRIMARY KEY (UserID, AccountType),
+    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+);

@@ -6,6 +6,26 @@ import pandas as pd
 from constants import db_settings
 import library.gpt as gpt
 
+def update_upload_progress(cursor, user_id, account_type, progress):
+    """
+    Updates the upload progress for the user in the shared progress table.
+    Sets progress to NULL when the upload is complete.
+    """
+    if progress is None:
+        # Reset progress to NULL after upload completes
+        cursor.execute("""
+            UPDATE UploadProgress 
+            SET Progress = NULL
+            WHERE UserID = %s AND AccountType = %s
+        """, (user_id, account_type))
+    else:
+        # Update the progress percentage
+        cursor.execute("""
+            INSERT INTO UploadProgress (UserID, AccountType, Progress)
+            VALUES (%s, %s, %s)
+            ON DUPLICATE KEY UPDATE Progress = %s
+        """, (user_id, account_type, progress, progress))
+
 def process_and_store_dataframe(user_id, dataframe, account_type):
     """
     Processes a dataframe of transactions, categorizes them using GPT where necessary, 
@@ -30,7 +50,7 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
             # Fetch user categories or default categories if user-defined ones don't exist
             category_map = get_user_categories_or_defaults(cursor, user_id, account_type)
 
-            # Process uncategorized data with GPT
+            # Process uncategorized data with GPT in batches, updating progress after each batch
             processed_data, gpt_requests = process_uncategorized_data_with_gpt(
                 cursor, uncategorized_rows, user_id, processed_data, category_map, account_type
             )
@@ -39,6 +59,9 @@ def process_and_store_dataframe(user_id, dataframe, account_type):
             new_transactions, new_transaction_rows = insert_transactions(
                 cursor, processed_data, user_id, account_type, new_transaction_rows, new_transactions
             )
+
+            # Reset the upload progress to NULL after completion
+            update_upload_progress(cursor, user_id, account_type, None)
 
         connection.commit()  # Commit the transaction to the database
 
@@ -127,11 +150,13 @@ def get_user_categories_or_defaults(cursor, user_id, account_type):
 def process_uncategorized_data_with_gpt(cursor, uncategorized_rows, user_id, processed_data, category_map, account_type):
     """
     Uses GPT to categorize uncategorized transactions and insert new category mappings.
+    Also updates upload progress after each batch.
     """
     gpt_requests = 0
+    total_batches = (len(uncategorized_rows) // 100) + (1 if len(uncategorized_rows) % 100 != 0 else 0)  # Calculate total batches
 
-    for i in range(0, len(uncategorized_rows), 100):  # Process in chunks of 100 rows
-        chunk = uncategorized_rows[i:i + 100]
+    for i, batch_start in enumerate(range(0, len(uncategorized_rows), 100)):  # Process in chunks of 100 rows
+        chunk = uncategorized_rows[batch_start:batch_start + 100]
         chunk_str = chunk.to_csv(index=False)
 
         # Make GPT request to categorize transactions
@@ -150,6 +175,10 @@ def process_uncategorized_data_with_gpt(cursor, uncategorized_rows, user_id, pro
                 (UserID, TransactionDescription, CategoryID)
                 VALUES (%s, %s, %s)
             """, (user_id, row['description'], category_id))
+
+        # Update the upload progress after each batch
+        progress = ((i + 1) / total_batches) * 100
+        update_upload_progress(cursor, user_id, account_type, progress)
 
     return processed_data, gpt_requests
 
